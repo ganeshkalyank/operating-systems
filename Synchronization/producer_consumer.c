@@ -1,63 +1,69 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-int buffer[10];
-int in = 0, out = 0;
+sem_t mutex;
+sem_t wrt;
 
-sem_t mutex, full, empty;
+int readcount = 0;
+int writecount = 0;
 
-void *producer(void *args) {
-    int count = 0;
-    while (count < 100) {
-        sem_wait(&empty);
+void *reader(void *arg) {
+    sem_wait(&wrt);
 
+    readcount++;
+
+    if (readcount == 1) {
         sem_wait(&mutex);
-
-        buffer[in] = rand() % 100;
-        in = (in + 1) % 10;
-
-        sem_post(&mutex);
-
-        sem_post(&full);
-
-        count++;
     }
+
+    readcount--;
+
+    if (readcount == 0) {
+        sem_post(&mutex);
+    }
+
+    sem_post(&wrt);
+
+    return NULL;
 }
 
-void *consumer(void *args) {
-    int count = 0;
-    while (count < 100) {
-        sem_wait(&full);
+void *writer(void *arg) {
+    sem_wait(&mutex);
 
-        sem_wait(&mutex);
+    writecount++;
 
-        int item = buffer[out];
-        out = (out + 1) % 10;
+    writecount--;
 
-        sem_post(&mutex);
+    sem_post(&mutex);
 
-        sem_post(&empty);
-
-        printf("Consumed item: %d\n", item);
-        count++;
-    }
+    return NULL;
 }
 
 int main() {
     sem_init(&mutex, 0, 1);
-    sem_init(&full, 0, 0);
-    sem_init(&empty, 0, 10);
+    sem_init(&wrt, 0, 1);
 
-    pthread_t producer_thread, consumer_thread;
-    pthread_create(&producer_thread, NULL, producer, NULL);
-    pthread_create(&consumer_thread, NULL, consumer, NULL);
+    pthread_t reader_threads[10];
+    pthread_t writer_threads[5];
 
-    pthread_join(producer_thread, NULL);
-    pthread_join(consumer_thread, NULL);
+    for (int i = 0; i < 10; i++) {
+        pthread_create(&reader_threads[i], NULL, reader, NULL);
+    }
+
+    for (int i = 0; i < 5; i++) {
+        pthread_create(&writer_threads[i], NULL, writer, NULL);
+    }
+
+    for (int i = 0; i < 10; i++) {
+        pthread_join(reader_threads[i], NULL);
+    }
+
+    for (int i = 0; i < 5; i++) {
+        pthread_join(writer_threads[i], NULL);
+    }
 
     sem_destroy(&mutex);
-    sem_destroy(&full);
-    sem_destroy(&empty);
+    sem_destroy(&wrt);
 
     return 0;
 }
