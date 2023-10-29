@@ -1,69 +1,76 @@
+#include <stdio.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <semaphore.h>
 
+#define BUFFER_SIZE 10
+
+sem_t empty_count;
+sem_t full_count;
 sem_t mutex;
-sem_t wrt;
 
-int readcount = 0;
-int writecount = 0;
+int buffer[BUFFER_SIZE];
 
-void *reader(void *arg) {
-    sem_wait(&wrt);
+int prod_count = 0;
+int con_count = 0;
 
-    readcount++;
+void produce() {
+  sem_wait(&empty_count);
+  sem_wait(&mutex);
 
-    if (readcount == 1) {
-        sem_wait(&mutex);
-    }
+  buffer[prod_count] = prod_count;
+  prod_count++;
 
-    readcount--;
-
-    if (readcount == 0) {
-        sem_post(&mutex);
-    }
-
-    sem_post(&wrt);
-
-    return NULL;
+  sem_post(&mutex);
+  sem_post(&full_count);
 }
 
-void *writer(void *arg) {
-    sem_wait(&mutex);
+void consume() {
+  sem_wait(&full_count);
+  sem_wait(&mutex);
 
-    writecount++;
+  int item = buffer[con_count];
+  con_count++;
 
-    writecount--;
+  sem_post(&mutex);
+  sem_post(&empty_count);
 
-    sem_post(&mutex);
+  printf("Consumed item: %d\n", item);
+}
 
-    return NULL;
+void* producer_thread(void* arg) {
+  while (prod_count < 100) {
+    produce();
+  }
+
+  return NULL;
+}
+
+void* consumer_thread(void* arg) {
+  while (con_count < 100) {
+    consume();
+  }
+
+  return NULL;
 }
 
 int main() {
-    sem_init(&mutex, 0, 1);
-    sem_init(&wrt, 0, 1);
+  sem_init(&empty_count, 0, BUFFER_SIZE);
+  sem_init(&full_count, 0, 0);
+  sem_init(&mutex, 0, 1);
 
-    pthread_t reader_threads[10];
-    pthread_t writer_threads[5];
+  pthread_t producer_threads[10];
+  pthread_t consumer_threads[10];
 
-    for (int i = 0; i < 10; i++) {
-        pthread_create(&reader_threads[i], NULL, reader, NULL);
-    }
+  for (int i = 0; i < 10; i++) {
+    pthread_create(&producer_threads[i], NULL, producer_thread, NULL);
+    pthread_create(&consumer_threads[i], NULL, consumer_thread, NULL);
+  }
 
-    for (int i = 0; i < 5; i++) {
-        pthread_create(&writer_threads[i], NULL, writer, NULL);
-    }
+  for (int i = 0; i < 10; i++) {
+    pthread_join(producer_threads[i], NULL);
+    pthread_join(consumer_threads[i], NULL);
+  }
 
-    for (int i = 0; i < 10; i++) {
-        pthread_join(reader_threads[i], NULL);
-    }
-
-    for (int i = 0; i < 5; i++) {
-        pthread_join(writer_threads[i], NULL);
-    }
-
-    sem_destroy(&mutex);
-    sem_destroy(&wrt);
-
-    return 0;
+  return 0;
 }
