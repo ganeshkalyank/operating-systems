@@ -1,27 +1,22 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdio.h>
 
 #define BUFFER_SIZE 10
 
-sem_t empty_count;
-sem_t full_count;
-sem_t mutex;
+sem_t empty_count, full_count, mutex;
 
 int buffer[BUFFER_SIZE];
-
-int prod_count = 0;
-int con_count = 0;
+int in = 0, out = 0;
 
 void produce() {
   sem_wait(&empty_count);
   sem_wait(&mutex);
 
-  buffer[prod_count] = prod_count;
-  prod_count++;
+  buffer[in] = rand() % 100;
+  in = (in + 1) % BUFFER_SIZE;
 
-  sem_post(&mutex);
+  sem_signal(&mutex);
   sem_post(&full_count);
 }
 
@@ -29,48 +24,48 @@ void consume() {
   sem_wait(&full_count);
   sem_wait(&mutex);
 
-  int item = buffer[con_count];
-  con_count++;
+  int item = buffer[out];
+  out = (out + 1) % BUFFER_SIZE;
 
-  sem_post(&mutex);
+  sem_signal(&mutex);
   sem_post(&empty_count);
 
-  printf("Consumed item: %d\n", item);
+  printf("Consumed: %d\n", item);
 }
 
 void* producer_thread(void* arg) {
-  while (prod_count < 100) {
+  while (1) {
     produce();
   }
-
-  return NULL;
 }
 
 void* consumer_thread(void* arg) {
-  while (con_count < 100) {
+  while (1) {
     consume();
   }
-
-  return NULL;
 }
 
 int main() {
+  pthread_t producer_threads[2];
+  pthread_t consumer_threads[2];
+
   sem_init(&empty_count, 0, BUFFER_SIZE);
   sem_init(&full_count, 0, 0);
   sem_init(&mutex, 0, 1);
 
-  pthread_t producer_threads[10];
-  pthread_t consumer_threads[10];
-
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 2; i++) {
     pthread_create(&producer_threads[i], NULL, producer_thread, NULL);
     pthread_create(&consumer_threads[i], NULL, consumer_thread, NULL);
   }
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 2; i++) {
     pthread_join(producer_threads[i], NULL);
     pthread_join(consumer_threads[i], NULL);
   }
+
+  sem_destroy(&empty_count);
+  sem_destroy(&full_count);
+  sem_destroy(&mutex);
 
   return 0;
 }
